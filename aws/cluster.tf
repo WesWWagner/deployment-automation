@@ -23,6 +23,12 @@ resource "aws_instance" "redpanda" {
   placement_group            = var.ha ? aws_placement_group.redpanda-pg[0].id : null
   placement_partition_number = var.ha ? (count.index % aws_placement_group.redpanda-pg[0].partition_count) + 1 : null
   tags                       = local.instance_tags
+  tags                       = merge(
+    local.instance_tags,
+    {
+      Name = "${var.instance_name_prefix}-redpanda-${count.index}",
+    }
+  )
 
   connection {
     user        = var.distro_ssh_user[var.distro]

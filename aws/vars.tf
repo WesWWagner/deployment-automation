@@ -15,6 +15,12 @@ variable "ha" {
   default     = false
 }
 
+variable "instance_name_prefix" {
+  description = "The prefix for the instance name"
+  type        = string
+  default     = "update-prefix-variable"
+}
+
 variable "distro" {
   description = "The default distribution to base the cluster on"
   default     = "ubuntu-focal"
