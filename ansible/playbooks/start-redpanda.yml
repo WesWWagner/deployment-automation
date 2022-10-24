@@ -61,3 +61,43 @@
         --api-urls {{ groups["redpanda"] | map('extract', hostvars) | map(attribute='private_ip') | product([':9644']) | map('join') | join(',') }}
       {% endif %}
     when: rack is defined and rack != -1
+
+  - name: enable shadow indexing
+    notify:
+      - restart redpanda-tuner
+      - restart redpanda
+    vars:
+      use_public_ips: "{{ advertise_public_ips | d() | bool }}"
+    shell: |
+      {% if use_public_ips %}
+      sudo -u redpanda rpk cluster config set cloud_storage_bucket {{ si_bucket_name }} --api-urls {{ "%s:%d" % (inventory_hostname, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_region {{ aws_region }} --api-urls {{ "%s:%d" % (inventory_hostname, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_access_key ABCDEFGHIJKLMNOP --api-urls {{ "%s:%d" % (inventory_hostname, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_secret_key 1234567890abcdefghijklmnop --api-urls {{ "%s:%d" % (inventory_hostname, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_enable_remote_read true --api-urls {{ "%s:%d" % (inventory_hostname, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_enable_remote_write true --api-urls {{ "%s:%d" % (inventory_hostname, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_segment_max_upload_interval_sec 30 --api-urls {{ "%s:%d" % (inventory_hostname, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_credentials_source aws_instance_metadata --api-urls {{ "%s:%d" % (inventory_hostname, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_enabled true --api-urls {{ "%s:%d" % (inventory_hostname, 9644) }}
+      {% else %}
+      sudo -u redpanda rpk cluster config set cloud_storage_bucket {{ si_bucket_name }} --api-urls {{ "%s:%d" % (private_ip, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_region {{ aws_region }} --api-urls {{ "%s:%d" % (private_ip, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_access_key ABCDEFGHIJKLMNOP --api-urls {{ "%s:%d" % (private_ip, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_secret_key 1234567890abcdefghijklmnop --api-urls {{ "%s:%d" % (private_ip, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_enable_remote_read true --api-urls {{ "%s:%d" % (private_ip, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_enable_remote_write true --api-urls {{ "%s:%d" % (private_ip, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_segment_max_upload_interval_sec 30 --api-urls {{ "%s:%d" % (private_ip, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_credentials_source aws_instance_metadata --api-urls {{ "%s:%d" % (private_ip, 9644) }}
+      sudo -u redpanda rpk cluster config set cloud_storage_enabled true --api-urls {{ "%s:%d" % (private_ip, 9644) }}
+      {% endif %}
+    when: si_bucket_name is defined
+
+  handlers:
+  - name: restart redpanda-tuner
+    systemd:
+      name: redpanda-tuner
+      state: restarted
+  - name: restart redpanda
+    systemd:
+      name: redpanda
+      state: restarted

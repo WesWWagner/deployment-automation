@@ -3,9 +3,10 @@ resource "random_uuid" "cluster" {}
 resource "time_static" "timestamp" {}
 
 locals {
-  uuid          = random_uuid.cluster.result
-  timestamp     = time_static.timestamp.rfc3339
-  deployment_id = "redpanda-${local.uuid}-${local.timestamp}"
+  uuid           = random_uuid.cluster.result
+  timestamp      = time_static.timestamp.rfc3339
+  deployment_id  = "redpanda-${local.uuid}-${local.timestamp}"
+  si_bucket_name = "${var.instance_name_prefix}-redpanda-si-bucket"
 
   # tags shared by all instances
   instance_tags = {
@@ -14,15 +15,63 @@ locals {
   }
 }
 
+resource "aws_iam_policy" "redpanda" {
+  name   = "${var.instance_name_prefix}-redpanda"
+  path   = "/"
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "s3:*",
+          "s3-object-lambda:*",
+        ],
+        "Resource": [
+          "arn:aws:s3:::${local.si_bucket_name}/*"
+        ]
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role" "redpanda" {
+  name               = "${var.instance_name_prefix}-redpanda"
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [
+      {
+        Action    = "sts:AssumeRole"
+        Effect    = "Allow"
+        Sid       = ""
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_iam_policy_attachment" "redpanda" {
+  name       = "${var.instance_name_prefix}-redpanda"
+  roles      = [aws_iam_role.redpanda.name]
+  policy_arn = aws_iam_policy.redpanda.arn
+}
+
+resource "aws_iam_instance_profile" "redpanda" {
+  name = "${var.instance_name_prefix}-redpanda"
+  role = aws_iam_role.redpanda.name
+}
+
 resource "aws_instance" "redpanda" {
   count                      = var.nodes
   ami                        = var.distro_ami[var.distro]
   instance_type              = var.instance_type
   key_name                   = aws_key_pair.ssh.key_name
+  iam_instance_profile       = aws_iam_instance_profile.redpanda.name
   vpc_security_group_ids     = [aws_security_group.node_sec_group.id]
   placement_group            = var.ha ? aws_placement_group.redpanda-pg[0].id : null
   placement_partition_number = var.ha ? (count.index % aws_placement_group.redpanda-pg[0].partition_count) + 1 : null
-  tags                       = local.instance_tags
   tags                       = merge(
     local.instance_tags,
     {
@@ -149,6 +198,7 @@ resource "aws_placement_group" "redpanda-pg" {
 resource "aws_key_pair" "ssh" {
   key_name   = "${local.deployment_id}-key"
   public_key = file(var.public_key_path)
+  tags       = local.instance_tags
 }
 
 resource "local_file" "hosts_ini" {
@@ -163,6 +213,10 @@ resource "local_file" "hosts_ini" {
       client_public_ips    = aws_instance.client.*.public_ip
       client_private_ips   = aws_instance.client.*.private_ip
       rack                 = aws_instance.redpanda.*.placement_partition_number
+      client_count         = var.clients
+      aws_region           = var.aws_region
+      si_enabled           = var.si_enabled
+      si_bucket_name       = local.si_bucket_name
     }
   )
   filename = "${path.module}/../hosts.ini"

@@ -18,7 +18,7 @@ variable "ha" {
 variable "instance_name_prefix" {
   description = "The prefix for the instance name"
   type        = string
-  default     = "update-prefix-variable"
+  default     = "prefix"
 }
 
 variable "distro" {
@@ -100,4 +100,10 @@ variable "distro_ssh_user" {
     "rhel-8"         = "ec2-user"
     "amazon-linux-2" = "ec2-user"
   }
+}
+
+variable "si_enabled" {
+  description = "Enables or disables shadow indexing"
+  type = bool
+  default = false
 }
